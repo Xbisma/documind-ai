@@ -9,3 +9,6 @@ data/raw_pdfs/
 data/chroma_db/
 .DS_Store
 .vscode/
+chroma_db/
+backend/uploaded_pdfs/
+*.pdf
