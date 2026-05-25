@@ -1,41 +1,59 @@
+from typing import Dict, List
+
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from typing import List, Dict
 
 
 def chunk_pages(pages_data: List[Dict]) -> List[Dict]:
     """
-    Takes extracted page data and splits text into smaller chunks.
-    Preserves metadata: doc_name, page_number, chunk_index.
-    
-    Why RecursiveCharacterTextSplitter?
-    - It tries to split on sentences/paragraphs first (not mid-word)
-    - Keeps semantic meaning intact
-    - chunk_overlap ensures context isn't lost at boundaries
+    Splits extracted PDF pages into searchable chunks.
+    Preserves citation metadata for retrieval and final answer citations.
     """
 
     splitter = RecursiveCharacterTextSplitter(
-        chunk_size=500,        # ~500 characters per chunk
-        chunk_overlap=50,      # 50 chars overlap so context isn't cut off
-        separators=["\n\n", "\n", ". ", " ", ""]  # tries these in order
+        chunk_size=900,
+        chunk_overlap=150,
+        separators=[
+            "\n\n",
+            "\n",
+            ". ",
+            "? ",
+            "! ",
+            "; ",
+            ", ",
+            " ",
+            ""
+        ],
     )
 
     all_chunks = []
+    global_chunk_index = 0
 
     for page in pages_data:
         text = page["text"]
         doc_name = page["doc_name"]
+        source_path = page.get("source_path", "")
         page_number = page["page_number"]
 
-        # Split the page text into chunks
         chunks = splitter.split_text(text)
 
-        for idx, chunk_text in enumerate(chunks):
+        for page_chunk_index, chunk_text in enumerate(chunks):
+            cleaned_chunk = chunk_text.strip()
+
+            if not cleaned_chunk:
+                continue
+
             all_chunks.append({
                 "doc_name": doc_name,
+                "source_path": source_path,
                 "page_number": page_number,
-                "chunk_index": idx,          # position of chunk within this page
-                "text": chunk_text
+                "page_chunk_index": page_chunk_index,
+                "global_chunk_index": global_chunk_index,
+                "text": cleaned_chunk,
+                "snippet": cleaned_chunk[:300],
+                "char_count": len(cleaned_chunk)
             })
+
+            global_chunk_index += 1
 
     print(f"[Chunker] Total chunks created: {len(all_chunks)}")
     return all_chunks

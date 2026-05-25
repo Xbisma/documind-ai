@@ -1,9 +1,9 @@
-"node_modules/" 
 venv/
 .venv/
 env/
 .env
 __pycache__/
+*.py[cod]
 *.pyc
 data/raw_pdfs/
 data/chroma_db/
@@ -11,4 +11,5 @@ data/chroma_db/
 .vscode/
 chroma_db/
 backend/uploaded_pdfs/
+uploaded_pdfs/
 *.pdf
