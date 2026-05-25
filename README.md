@@ -1,1 +1,1 @@
-"# Documind AI" 
+# DocuMind AI
