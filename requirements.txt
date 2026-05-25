@@ -1,0 +1,13 @@
+streamlit
+fastapi
+uvicorn
+pymupdf
+langchain
+langchain-community
+chromadb
+sentence-transformers
+groq
+python-dotenv
+pandas
+numpy
+scikit-learn
