@@ -55,4 +55,5 @@ Upload documents, ask questions, retrieve the most relevant document chunks, gen
 4.	Combined Work
 •	Streamlit frontend
 •	FastAPI backend connection
-
+•	Project Documentation
+•	GitHub Repo Management
