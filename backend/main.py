@@ -1,14 +1,13 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from typing import List
-import os
-import shutil
 
-from services.pdf_extractor import extract_text_from_pdf
-from services.chunker import chunk_pages
-from services.embedder import embed_and_store
+from backend.services.pdf_pipeline import process_uploaded_pdf
+from backend.services.retriever import retrieve_relevant_chunks
+from backend.services.embedder import backfill_chunk_metadata, get_chroma_collection
+
 
 app = FastAPI(title="DocuMind AI", version="1.0.0")
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -17,9 +16,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-UPLOAD_DIR = "uploaded_pdfs"
-os.makedirs(UPLOAD_DIR, exist_ok=True)
-
 
 @app.get("/")
 def home():
@@ -27,37 +23,56 @@ def home():
 
 
 @app.post("/upload-pdfs/")
-async def upload_pdfs(files: List[UploadFile] = File(...)):
-    results = []
+async def upload_pdfs(file: UploadFile = File(...)):
+    """
+    Uploads one PDF and processes it into searchable vector chunks.
+    """
 
-    for file in files:
-        if not file.filename.endswith(".pdf"):
-            raise HTTPException(
-                status_code=400, 
-                detail=f"{file.filename} is not a PDF."
-            )
+    try:
+        result = process_uploaded_pdf(file)
 
-        save_path = os.path.join(UPLOAD_DIR, file.filename)
-        with open(save_path, "wb") as f:
-            shutil.copyfileobj(file.file, f)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error))
 
-        pages = extract_text_from_pdf(save_path)
-        chunks = chunk_pages(pages)
-        embed_and_store(chunks)
+    except Exception as error:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to process {file.filename}: {error}"
+        )
 
-        results.append({
-            "filename": file.filename,
-            "pages_extracted": len(pages),
-            "chunks_stored": len(chunks),
-            "status": "success"
-        })
+    return {"uploaded": [result]}
 
-    return {"uploaded": results}
+
+@app.get("/search-test/")
+def search_test(
+    q: str = Query(..., description="Search query"),
+    top_k: int = Query(5, ge=1, le=20),
+    min_similarity: float = Query(0.35, ge=0.0, le=1.0)
+):
+    """
+    Tests retrieval before connecting to LLM.
+    This is for Bisma's retrieval + LLM work.
+    """
+
+    return retrieve_relevant_chunks(
+        query=q,
+        top_k=top_k,
+        min_similarity=min_similarity
+    )
 
 
 @app.get("/test-chunks/")
 def test_chunks():
-    from services.embedder import get_chroma_collection
+    """
+    Shows a few stored chunks from ChromaDB.
+    Useful for checking whether ingestion worked.
+    """
+
+    backfill_summary = backfill_chunk_metadata()
     collection = get_chroma_collection()
     results = collection.get(limit=5, include=["documents", "metadatas"])
-    return results
+
+    return {
+        "backfill": backfill_summary,
+        "results": results,
+    }

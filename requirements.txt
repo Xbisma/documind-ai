@@ -11,3 +11,5 @@ python-dotenv
 pandas
 numpy
 scikit-learn
+python-multipart
+langchain-text-splitters
