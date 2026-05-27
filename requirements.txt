@@ -8,8 +8,10 @@ chromadb
 sentence-transformers
 groq
 python-dotenv
+langchain-groq
 pandas
 numpy
 scikit-learn
 python-multipart
 langchain-text-splitters
+pytest

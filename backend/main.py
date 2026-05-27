@@ -7,6 +7,8 @@ from backend.services.pdf_pipeline import process_uploaded_pdf
 from backend.services.retriever import retrieve_relevant_chunks
 from backend.services.embedder import backfill_chunk_metadata, get_chroma_collection
 
+from pydantic import BaseModel
+from backend.services.rag_chain import RAGAnswerService
 
 app = FastAPI(title="DocuMind AI", version="1.0.0")
 
@@ -42,6 +44,12 @@ def custom_openapi():
 
 app.openapi = custom_openapi
 
+
+class QuestionRequest(BaseModel):
+    question: str
+
+
+rag_service = RAGAnswerService()
 
 @app.get("/")
 def home():
@@ -123,3 +131,8 @@ def test_chunks():
         "backfill": backfill_summary,
         "results": results,
     }
+
+@app.post("/ask")
+def ask_question(request: QuestionRequest):
+    result = rag_service.answer_question(request.question)
+    return result

@@ -1,7 +1,72 @@
-from typing import Dict, List
-
+from typing import Dict, List, Any
+import chromadb
+from sentence_transformers import SentenceTransformer
 from backend.services.embedder import embed_texts, get_chroma_collection
 
+
+def _to_int_if_numeric(value: Any) -> Any:
+    if isinstance(value, str) and value.isdigit():
+        return int(value)
+    return value
+
+class DocumentRetriever:
+    def __init__(
+        self,
+        db_path: str = "chroma_db",
+        collection_name: str = "documents",
+        embedding_model_name: str = "all-MiniLM-L6-v2",
+        similarity_threshold: float = 0.55,
+        top_k: int = 5,
+    ):
+        self.db_path = db_path
+        self.collection_name = collection_name
+        self.similarity_threshold = similarity_threshold
+        self.top_k = top_k
+
+        self.client = chromadb.PersistentClient(path=self.db_path)
+        self.collection = self.client.get_or_create_collection(
+            name=self.collection_name
+        )
+
+        self.embedding_model = SentenceTransformer(embedding_model_name)
+
+    def retrieve(self, query: str) -> List[Dict[str, Any]]:
+        """
+        Retrieves relevant chunks from ChromaDB.
+        Applies relevance threshold filtering.
+        """
+
+        if not query or not query.strip():
+            return []
+
+        query_embedding = self.embedding_model.encode(query).tolist()
+
+        results = self.collection.query(
+            query_embeddings=[query_embedding],
+            n_results=self.top_k,
+            include=["documents", "metadatas", "distances"],
+        )
+
+        documents = results.get("documents", [[]])[0]
+        metadatas = results.get("metadatas", [[]])[0]
+        distances = results.get("distances", [[]])[0]
+
+        filtered_results = []
+
+        for doc, metadata, distance in zip(documents, metadatas, distances):
+            relevance_score = 1 - distance
+
+            if relevance_score >= self.similarity_threshold:
+                filtered_results.append(
+                    {
+                        "text": doc,
+                        "metadata": metadata,
+                        "distance": distance,
+                        "relevance_score": relevance_score,
+                    }
+                )
+
+        return filtered_results
 
 def distance_to_similarity(distance: float) -> float:
     """
@@ -44,9 +109,9 @@ def format_retrieval_results(results: Dict, min_similarity: float) -> List[Dict]
             "distance": round(distance, 4),
             "metadata": {
                 "doc_name": metadata.get("doc_name"),
-                "page_number": metadata.get("page_number"),
-                "page_chunk_index": metadata.get("page_chunk_index"),
-                "global_chunk_index": metadata.get("global_chunk_index"),
+                "page_number": _to_int_if_numeric(metadata.get("page_number")),
+                "page_chunk_index": _to_int_if_numeric(metadata.get("page_chunk_index")),
+                "global_chunk_index": _to_int_if_numeric(metadata.get("global_chunk_index")),
                 "snippet": metadata.get("snippet"),
                 "uploaded_at": metadata.get("uploaded_at"),
             }
