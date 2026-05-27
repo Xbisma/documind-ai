@@ -1,4 +1,6 @@
-from fastapi import FastAPI, File, HTTPException, Query, UploadFile
+from typing import List
+from fastapi import FastAPI, File, Query, UploadFile
+from fastapi.openapi.utils import get_openapi
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.services.pdf_pipeline import process_uploaded_pdf
@@ -17,30 +19,75 @@ app.add_middleware(
 )
 
 
+def custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+
+    openapi_schema = get_openapi(
+        title=app.title,
+        version=app.version,
+        routes=app.routes,
+    )
+
+    upload_schema = openapi_schema["components"]["schemas"]["Body_upload_pdfs_upload_pdfs__post"]
+    upload_schema["properties"]["files"]["items"] = {
+        "type": "string",
+        "format": "binary",
+    }
+
+    openapi_schema["openapi"] = "3.0.3"
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
+
+
+app.openapi = custom_openapi
+
+
 @app.get("/")
 def home():
     return {"message": "DocuMind AI backend is running!"}
 
 
 @app.post("/upload-pdfs/")
-async def upload_pdfs(file: UploadFile = File(...)):
+async def upload_pdfs(files: List[UploadFile] = File(...)):
     """
-    Uploads one PDF and processes it into searchable vector chunks.
+    Uploads multiple PDFs and processes them into searchable vector chunks.
     """
 
-    try:
-        result = process_uploaded_pdf(file)
+    results = []
+    for file in files:
+        try:
+            result = process_uploaded_pdf(file)
+            results.append(result)
 
-    except ValueError as error:
-        raise HTTPException(status_code=400, detail=str(error))
+        except ValueError as error:
+            results.append({
+                "filename": file.filename,
+                "status": "failed",
+                "error": str(error)
+            })
 
-    except Exception as error:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to process {file.filename}: {error}"
-        )
+        except Exception as error:
+            results.append({
+                "filename": file.filename,
+                "status": "failed",
+                "error": f"Failed to process file: {error}"
+            })
 
-    return {"uploaded": [result]}
+    successful_uploads = [
+        result for result in results if result.get("status") == "success"
+    ]
+
+    failed_uploads = [
+        result for result in results if result.get("status") == "failed"
+    ]
+
+    return {
+        "total_files": len(files),
+        "successful_uploads": len(successful_uploads),
+        "failed_uploads": len(failed_uploads),
+        "uploaded": results
+    }
 
 
 @app.get("/search-test/")
