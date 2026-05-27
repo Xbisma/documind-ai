@@ -3,6 +3,12 @@ import chromadb
 from sentence_transformers import SentenceTransformer
 from backend.services.embedder import embed_texts, get_chroma_collection
 
+
+def _to_int_if_numeric(value: Any) -> Any:
+    if isinstance(value, str) and value.isdigit():
+        return int(value)
+    return value
+
 class DocumentRetriever:
     def __init__(
         self,
@@ -103,9 +109,9 @@ def format_retrieval_results(results: Dict, min_similarity: float) -> List[Dict]
             "distance": round(distance, 4),
             "metadata": {
                 "doc_name": metadata.get("doc_name"),
-                "page_number": metadata.get("page_number"),
-                "page_chunk_index": metadata.get("page_chunk_index"),
-                "global_chunk_index": metadata.get("global_chunk_index"),
+                "page_number": _to_int_if_numeric(metadata.get("page_number")),
+                "page_chunk_index": _to_int_if_numeric(metadata.get("page_chunk_index")),
+                "global_chunk_index": _to_int_if_numeric(metadata.get("global_chunk_index")),
                 "snippet": metadata.get("snippet"),
                 "uploaded_at": metadata.get("uploaded_at"),
             }

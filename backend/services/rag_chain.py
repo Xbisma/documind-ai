@@ -1,8 +1,13 @@
 import os
 from typing import Dict, Any, List
 
-from dotenv import load_dotenv
 from groq import Groq
+
+try:
+    from dotenv import load_dotenv
+except ImportError:  # pragma: no cover - optional in constrained runtimes
+    def load_dotenv(*args, **kwargs):
+        return False
 
 from backend.services.query_rewriter import rewrite_query
 from backend.services.retriever import DocumentRetriever
@@ -12,10 +17,22 @@ from backend.services.prompt_templates import SYSTEM_PROMPT, ANSWER_PROMPT_TEMPL
 load_dotenv()
 
 
+def _to_int_if_numeric(value):
+    if isinstance(value, str) and value.isdigit():
+        return int(value)
+    return value
+
+
 class RAGAnswerService:
     def __init__(self):
-        self.client = Groq(api_key=os.getenv("GROQ_API_KEY"))
-        self.model = os.getenv("GROQ_MODEL", "llama3-8b-8192")
+        self.api_key = os.getenv("GROQ_API_KEY")
+        self.client = Groq(api_key=self.api_key) if self.api_key else None
+        self.model = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
+        self.fallback_models = [
+            self.model,
+            "llama-3.1-8b-instant",
+            "llama-3.3-70b-versatile",
+        ]
         self.retriever = DocumentRetriever()
 
     def _format_context(self, retrieved_chunks: List[Dict[str, Any]]) -> str:
@@ -49,7 +66,7 @@ Text:
             citations.append(
                 {
                     "doc_name": metadata.get("doc_name", "Unknown document"),
-                    "page_number": metadata.get("page_number", "Unknown page"),
+                    "page_number": _to_int_if_numeric(metadata.get("page_number", "Unknown page")),
                     "snippet": chunk.get("text", "")[:300],
                     "relevance_score": round(chunk.get("relevance_score", 0), 3),
                 }
@@ -86,25 +103,49 @@ Text:
             context=context,
         )
 
-        response = self.client.chat.completions.create(
-            model=self.model,
-            messages=[
-                {
-                    "role": "system",
-                    "content": SYSTEM_PROMPT,
-                },
-                {
-                    "role": "user",
-                    "content": user_prompt,
-                },
-            ],
-            temperature=0.1,
-        )
+        if not self.client:
+            return {
+                "answer": "I couldn't generate an answer because the Groq API key is not configured.",
+                "rewritten_query": rewritten_query,
+                "citations": self._format_citations(retrieved_chunks),
+                "status": "llm_unavailable",
+            }
 
-        answer = response.choices[0].message.content
+        response = None
+        last_error = None
+
+        for model_name in self.fallback_models:
+            try:
+                response = self.client.chat.completions.create(
+                    model=model_name,
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": SYSTEM_PROMPT,
+                        },
+                        {
+                            "role": "user",
+                            "content": user_prompt,
+                        },
+                    ],
+                    temperature=0.1,
+                )
+                self.model = model_name
+                break
+            except Exception as error:
+                last_error = error
+
+        if response is None:
+            return {
+                "answer": "I couldn't generate an answer from the uploaded documents right now.",
+                "rewritten_query": rewritten_query,
+                "citations": self._format_citations(retrieved_chunks),
+                "status": "llm_error",
+                "error": str(last_error) if last_error else "Unknown Groq error",
+            }
 
         return {
-            "answer": answer,
+            "answer": response.choices[0].message.content,
             "rewritten_query": rewritten_query,
             "citations": self._format_citations(retrieved_chunks),
             "status": "answered",
