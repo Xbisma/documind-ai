@@ -8,6 +8,7 @@ chromadb
 sentence-transformers
 groq
 python-dotenv
+langchain-groq
 pandas
 numpy
 scikit-learn
