@@ -85,7 +85,7 @@ Text:
         doc_ids = []
         for c in chunks:
             md = (c or {}).get("metadata", {}) or {}
-            if md.get("doc_id"):
+            if md.get("doc_id") and str(md.get("doc_id")).lower() != "unknown":
                 doc_ids.append(str(md["doc_id"]))
 
         if not doc_ids:
@@ -100,7 +100,7 @@ Text:
         for c in chunks:
             md = (c or {}).get("metadata", {}) or {}
             doc_id = md.get("doc_id")
-            if not doc_id or doc_id in seen:
+            if not doc_id or doc_id in seen or str(doc_id).lower() == "unknown":
                 continue
             seen.add(doc_id)
             out.append({"doc_id": str(doc_id), "doc_name": str(md.get("doc_name") or "Unknown document")})
