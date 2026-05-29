@@ -105,13 +105,13 @@ def search_test(
     q: str = Query(..., description="Search query"),
     session_id: Optional[str] = Query(None, description="Filter retrieval to this session_id"),
     top_k: int = Query(5, ge=1, le=20),
-    min_similarity: float = Query(0.35, ge=0.0, le=1.0),
+    min_similarity: float = Query(0.35, ge=0.0, le=1.0)
 ):
     return retrieve_relevant_chunks(
         query=q,
         session_id=session_id,
         top_k=top_k,
-        min_similarity=min_similarity,
+        min_similarity=min_similarity
     )
 
 
