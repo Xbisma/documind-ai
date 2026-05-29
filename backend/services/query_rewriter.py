@@ -1,38 +1,78 @@
-from typing import Optional
+from __future__ import annotations
+
+import re
+from typing import Any, Dict, List, Optional, Sequence
 
 
-def rewrite_query(user_query: str, chat_context: Optional[str] = None) -> str:
+_VAGUE_PATTERNS = [
+    r"\b(it|this|that|these|those)\b",
+    r"^(how|what|why|where|when)\b.{0,25}\b(it|this|that)\b",
+]
+
+_VAGUE_REGEX = re.compile("|".join(_VAGUE_PATTERNS), re.IGNORECASE)
+
+
+def is_vague_question(question: str) -> bool:
+    if not question or not question.strip():
+        return True
+
+    q = question.strip()
+    # very short questions are often vague
+    if len(q.split()) <= 3:
+        return True
+
+    return bool(_VAGUE_REGEX.search(q))
+
+
+def rewrite_query_if_needed(question: str, *, doc_hint: Optional[str] = None) -> str:
     """
-    Rewrites vague user queries into clearer search queries.
-
-    For now, this is rule-based.
-    Later, this can be replaced with an LLM-based rewriter.
+    Rewrite only if vague. Otherwise return original question.
+    This is intentionally conservative.
     """
-
-    if not user_query or not user_query.strip():
+    q = (question or "").strip()
+    if not q:
         return ""
 
-    query = user_query.strip()
+    if not is_vague_question(q):
+        return q
 
-    vague_phrases = {
-        "how do i install it": "installation steps",
-        "how to install it": "installation steps",
-        "install it": "installation steps",
-        "setup it": "setup instructions",
-        "how to setup": "setup instructions",
-        "what is this": "definition explanation",
-        "how does it work": "working mechanism explanation",
-        "fix this": "troubleshooting steps",
-        "error": "error troubleshooting solution",
-    }
+    # Minimal safe rewriting rules (do NOT guess too much)
+    lower = q.lower()
 
-    lower_query = query.lower()
+    if "install" in lower:
+        return f"installation steps {doc_hint}".strip() if doc_hint else "installation steps"
+    if "execute" in lower or "run" in lower:
+        return f"how to execute or run {doc_hint}".strip() if doc_hint else "how to execute or run"
+    if "setup" in lower or "configure" in lower:
+        return f"setup and configuration {doc_hint}".strip() if doc_hint else "setup and configuration"
 
-    for vague, improved in vague_phrases.items():
-        if vague in lower_query:
-            return improved
+    # fallback: attach hint if we have it
+    return f"{q} {doc_hint}".strip() if doc_hint else q
 
-    if chat_context:
-        return f"{query} Context: {chat_context}"
 
-    return query
+def build_clarification_options(chunks: Sequence[Dict[str, Any]]) -> List[Dict[str, str]]:
+    """
+    Build a deduped list of docs present in the session based on available chunks/metadatas.
+    This is a fallback method.
+    """
+    seen = set()
+    options: List[Dict[str, str]] = []
+
+    for c in chunks:
+        md = (c or {}).get("metadata", {}) or {}
+        doc_id = md.get("doc_id")
+        doc_name = md.get("doc_name")
+
+        if not doc_id:
+            continue
+
+        if doc_id in seen:
+            continue
+
+        seen.add(doc_id)
+        options.append({
+            "doc_id": str(doc_id),
+            "doc_name": str(doc_name or "Unknown document"),
+        })
+
+    return options
