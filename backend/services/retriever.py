@@ -1,6 +1,8 @@
-from typing import Dict, List, Any
-import chromadb
-from sentence_transformers import SentenceTransformer
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional, Sequence, Tuple
+
 from backend.services.embedder import embed_texts, get_chroma_collection
 
 
@@ -9,159 +11,132 @@ def _to_int_if_numeric(value: Any) -> Any:
         return int(value)
     return value
 
-class DocumentRetriever:
-    def __init__(
-        self,
-        db_path: str = "chroma_db",
-        collection_name: str = "documents",
-        embedding_model_name: str = "all-MiniLM-L6-v2",
-        similarity_threshold: float = 0.55,
-        top_k: int = 5,
-    ):
-        self.db_path = db_path
-        self.collection_name = collection_name
-        self.similarity_threshold = similarity_threshold
-        self.top_k = top_k
 
-        self.client = chromadb.PersistentClient(path=self.db_path)
-        self.collection = self.client.get_or_create_collection(
-            name=self.collection_name
-        )
-
-        self.embedding_model = SentenceTransformer(embedding_model_name)
-
-    def retrieve(self, query: str) -> List[Dict[str, Any]]:
-        """
-        Retrieves relevant chunks from ChromaDB.
-        Applies relevance threshold filtering.
-        """
-
-        if not query or not query.strip():
-            return []
-
-        query_embedding = self.embedding_model.encode(query).tolist()
-
-        results = self.collection.query(
-            query_embeddings=[query_embedding],
-            n_results=self.top_k,
-            include=["documents", "metadatas", "distances"],
-        )
-
-        documents = results.get("documents", [[]])[0]
-        metadatas = results.get("metadatas", [[]])[0]
-        distances = results.get("distances", [[]])[0]
-
-        filtered_results = []
-
-        for doc, metadata, distance in zip(documents, metadatas, distances):
-            relevance_score = 1 - distance
-
-            if relevance_score >= self.similarity_threshold:
-                filtered_results.append(
-                    {
-                        "text": doc,
-                        "metadata": metadata,
-                        "distance": distance,
-                        "relevance_score": relevance_score,
-                    }
-                )
-
-        return filtered_results
-
-def distance_to_similarity(distance: float) -> float:
-    """
-    Converts Chroma cosine distance into similarity score.
-    Smaller distance means better match.
-    Similarity = 1 - distance.
-    """
-
+def _distance_to_similarity(distance: float) -> float:
     return 1 - distance
 
 
-def format_retrieval_results(results: Dict, min_similarity: float) -> List[Dict]:
+@dataclass
+class RetrievalConfig:
+    top_k: int = 8
+    min_similarity: float = 0.55
+    # adaptive fallback thresholds if nothing is found
+    fallback_thresholds: Tuple[float, ...] = (0.50, 0.45, 0.35)
+
+
+class DocumentRetriever:
     """
-    Converts raw ChromaDB results into clean retrieval results.
-    Applies threshold filtering.
+    Single retriever used by /ask and /search-test.
+
+    Supports:
+      - session_id filtering (required for real chats)
+      - doc_id filtering (for doc routing)
+      - adaptive thresholds
     """
 
-    formatted_results = []
+    def __init__(self, collection_name: str = "documents", config: Optional[RetrievalConfig] = None):
+        self.collection_name = collection_name
+        self.config = config or RetrievalConfig()
+        self.collection = get_chroma_collection(collection_name)
 
-    documents = results.get("documents", [[]])[0]
-    metadatas = results.get("metadatas", [[]])[0]
-    distances = results.get("distances", [[]])[0]
-    ids = results.get("ids", [[]])[0]
+    def retrieve(
+        self,
+        query: str,
+        *,
+        session_id: Optional[str],
+        doc_ids: Optional[Sequence[str]] = None,
+        top_k: Optional[int] = None,
+        min_similarity: Optional[float] = None,
+        adaptive: bool = True,
+    ) -> List[Dict[str, Any]]:
+        if not query or not query.strip():
+            return []
 
-    for chunk_id, document, metadata, distance in zip(
-        ids,
-        documents,
-        metadatas,
-        distances
-    ):
-        similarity_score = distance_to_similarity(distance)
+        query_embedding = embed_texts([query.strip()])
 
-        if similarity_score < min_similarity:
-            continue
+        n_results = top_k or self.config.top_k
+        threshold = min_similarity if min_similarity is not None else self.config.min_similarity
 
-        formatted_results.append({
-            "chunk_id": chunk_id,
-            "text": document,
-            "similarity_score": round(similarity_score, 4),
-            "distance": round(distance, 4),
-            "metadata": {
-                "doc_name": metadata.get("doc_name"),
-                "page_number": _to_int_if_numeric(metadata.get("page_number")),
-                "page_chunk_index": _to_int_if_numeric(metadata.get("page_chunk_index")),
-                "global_chunk_index": _to_int_if_numeric(metadata.get("global_chunk_index")),
-                "snippet": metadata.get("snippet"),
-                "uploaded_at": metadata.get("uploaded_at"),
-            }
-        })
+        where: Dict[str, Any] = {}
+        if session_id:
+            where["session_id"] = session_id
 
-    return formatted_results
+        # Chroma supports simple metadata filters. For multiple doc_ids we do $in.
+        # If your Chroma version doesn't support $in, we can do routing by repeated queries per doc_id.
+        if doc_ids:
+            where["doc_id"] = {"$in": list(doc_ids)}
+
+        thresholds = [threshold]
+        if adaptive:
+            thresholds += [t for t in self.config.fallback_thresholds if t < threshold]
+
+        for t in thresholds:
+            raw = self.collection.query(
+                query_embeddings=query_embedding,
+                n_results=n_results,
+                include=["documents", "metadatas", "distances", "ids"],
+                where=where or None,
+            )
+            results = self._format(raw, min_similarity=t)
+            if results:
+                return results
+
+        return []
+
+    def _format(self, raw: Dict[str, Any], min_similarity: float) -> List[Dict[str, Any]]:
+        documents = raw.get("documents", [[]])[0]
+        metadatas = raw.get("metadatas", [[]])[0]
+        distances = raw.get("distances", [[]])[0]
+        ids = raw.get("ids", [[]])[0]
+
+        formatted: List[Dict[str, Any]] = []
+
+        for chunk_id, doc, metadata, distance in zip(ids, documents, metadatas, distances):
+            similarity = _distance_to_similarity(distance)
+            if similarity < min_similarity:
+                continue
+
+            metadata = metadata or {}
+            formatted.append({
+                "chunk_id": chunk_id,
+                "text": doc,
+                "distance": round(distance, 4),
+                "similarity_score": round(similarity, 4),
+                "metadata": {
+                    "session_id": metadata.get("session_id"),
+                    "doc_id": metadata.get("doc_id"),
+                    "doc_name": metadata.get("doc_name"),
+                    "page_number": _to_int_if_numeric(metadata.get("page_number")),
+                    "page_chunk_index": _to_int_if_numeric(metadata.get("page_chunk_index")),
+                    "global_chunk_index": _to_int_if_numeric(metadata.get("global_chunk_index")),
+                    "snippet": metadata.get("snippet"),
+                    "char_start": _to_int_if_numeric(metadata.get("char_start")),
+                    "char_end": _to_int_if_numeric(metadata.get("char_end")),
+                    "uploaded_at": metadata.get("uploaded_at"),
+                }
+            })
+
+        return formatted
 
 
+# Backward-compatible helper for /search-test endpoint
 def retrieve_relevant_chunks(
     query: str,
+    session_id: Optional[str] = None,
     top_k: int = 5,
     min_similarity: float = 0.35,
-    collection_name: str = "documents"
-) -> Dict:
-    """
-    Retrieves relevant chunks from ChromaDB using semantic search.
-    Applies similarity threshold to avoid weak/hallucination-prone context.
-    """
-
-    if not query or not query.strip():
-        return {
-            "query": query,
-            "results": [],
-            "message": "Query cannot be empty."
-        }
-
-    collection = get_chroma_collection(collection_name)
-
-    query_embedding = embed_texts([query.strip()])
-
-    raw_results = collection.query(
-        query_embeddings=query_embedding,
-        n_results=top_k,
-        include=["documents", "metadatas", "distances"]
+    collection_name: str = "documents",
+) -> Dict[str, Any]:
+    retriever = DocumentRetriever(collection_name=collection_name)
+    results = retriever.retrieve(
+        query,
+        session_id=session_id,
+        top_k=top_k,
+        min_similarity=min_similarity,
+        adaptive=False,   # search-test should show strict behavior for debugging
     )
 
-    filtered_results = format_retrieval_results(
-        raw_results,
-        min_similarity=min_similarity
-    )
+    if not results:
+        return {"query": query, "results": [], "message": "No reliable answer found in uploaded documents."}
 
-    if not filtered_results:
-        return {
-            "query": query,
-            "results": [],
-            "message": "No reliable answer found in uploaded documents."
-        }
-
-    return {
-        "query": query,
-        "results": filtered_results,
-        "message": "Relevant chunks retrieved successfully."
-    }
+    return {"query": query, "results": results, "message": "Relevant chunks retrieved successfully."}
