@@ -18,10 +18,11 @@ def _distance_to_similarity(distance: float) -> float:
 
 @dataclass
 class RetrievalConfig:
-    top_k: int = 8
-    min_similarity: float = 0.55
-    # adaptive fallback thresholds if nothing is found
-    fallback_thresholds: Tuple[float, ...] = (0.50, 0.45, 0.35)
+    top_k: int = 10
+    # Start with a realistic threshold for PDFs
+    min_similarity: float = 0.35
+    # fallbacks go even lower (still safe because LLM is constrained by context rules)
+    fallback_thresholds: Tuple[float, ...] = (0.30, 0.25, 0.20)
 
 
 class DocumentRetriever:
