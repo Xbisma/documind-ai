@@ -74,7 +74,7 @@ class DocumentRetriever:
             raw = self.collection.query(
                 query_embeddings=query_embedding,
                 n_results=n_results,
-                include=["documents", "metadatas", "distances", "ids"],
+                include=["documents", "metadatas", "distances"],
                 where=where or None,
             )
             results = self._format(raw, min_similarity=t)
@@ -87,18 +87,17 @@ class DocumentRetriever:
         documents = raw.get("documents", [[]])[0]
         metadatas = raw.get("metadatas", [[]])[0]
         distances = raw.get("distances", [[]])[0]
-        ids = raw.get("ids", [[]])[0]
 
         formatted: List[Dict[str, Any]] = []
 
-        for chunk_id, doc, metadata, distance in zip(ids, documents, metadatas, distances):
+        for doc, metadata, distance in zip(documents, metadatas, distances):
             similarity = _distance_to_similarity(distance)
             if similarity < min_similarity:
                 continue
 
             metadata = metadata or {}
             formatted.append({
-                "chunk_id": chunk_id,
+                "chunk_id": metadata.get("chunk_id"),
                 "text": doc,
                 "distance": round(distance, 4),
                 "similarity_score": round(similarity, 4),
