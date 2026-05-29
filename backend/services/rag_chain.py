@@ -160,11 +160,27 @@ Text:
         )
 
         if not initial_chunks:
+            # debug: try a super-low retrieval to see if anything exists at all
+            debug_chunks = self.retriever.retrieve(
+                query=rewritten_query,
+                session_id=session_id,
+                min_similarity=0.10,
+                top_k=8,
+                adaptive=False,
+            )
+
             return {
                 "answer": "I couldn't find a reliable answer in the uploaded documents.",
                 "rewritten_query": rewritten_query,
                 "citations": [],
                 "status": "no_relevant_context",
+                "debug": {
+                    "debug_found_chunks": len(debug_chunks),
+                    "debug_top_doc_names": [
+                        (c.get("metadata", {}) or {}).get("doc_name") for c in debug_chunks
+                    ][:5],
+                    "hint": "If debug_found_chunks > 0, your thresholds are too strict.",
+                },
             }
 
         # 3) Doc routing: pick dominant doc_id(s) then re-retrieve filtered
