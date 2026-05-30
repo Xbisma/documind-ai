@@ -1,8 +1,6 @@
 from typing import List, Optional
 from uuid import uuid4
 
-from typing import List, Optional
-from uuid import uuid4
 from fastapi import FastAPI, File, Query, UploadFile
 from fastapi.openapi.utils import get_openapi
 from fastapi.middleware.cors import CORSMiddleware
