@@ -50,13 +50,17 @@ def backfill_chunk_metadata(collection_name: str = "documents") -> Dict[str, int
         snippet = metadata.get("snippet") or (document[:300] if document else "")
         uploaded_at = metadata.get("uploaded_at") or "unknown"
 
-        # NEW defaults (safe)
-        metadata.setdefault("session_id", "unknown")
-        metadata.setdefault("doc_id", "unknown")
-        metadata.setdefault("char_start", "")
-        metadata.setdefault("char_end", "")
-
+        defaults = {
+            "session_id": "unknown",
+            "doc_id": "unknown",
+            "char_start": "",
+            "char_end": "",
+        }
         changed = False
+        for key, default_value in defaults.items():
+            if key not in metadata:
+                metadata[key] = default_value
+                changed = True
         if metadata.get("snippet") != snippet:
             metadata["snippet"] = snippet
             changed = True
