@@ -229,22 +229,14 @@ if st.button("Ask", type="primary"):
                     st.subheader("Rewritten Query")
                     st.write(data.get("rewritten_query", ""))
 
-                    used_doc_ids = data.get("used_doc_ids")
-                    if used_doc_ids:
-                        st.subheader("Doc Routing (used_doc_ids)")
-                        st.write(used_doc_ids)
-
                     citations = data.get("citations", [])
                     if citations:
                         st.subheader("Citations")
                         for c in citations:
                             st.markdown(
                                 f"""
-**Document:** {c.get("doc_name")}  
-**Doc ID:** {c.get("doc_id")}  
+**Document:** {c.get("doc_name")}   
 **Page:** {c.get("page_number")}  
-**Chunk ID:** {c.get("chunk_id")}  
-**Similarity Score:** {c.get("similarity_score")}  
 **Snippet:** {c.get("snippet")}
 """
                             )
