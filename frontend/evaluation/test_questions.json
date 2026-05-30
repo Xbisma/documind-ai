@@ -1,0 +1,9 @@
+[
+ {
+ "pdf_set_name": "python_docs",
+ "expected_doc_name": "executing_python_scripts.pdf",
+ "question": "How do I run a Python script from the terminal?",
+ "expected_answer_keywords": ["python", ".py", "terminal"],
+ "type": "procedure"
+ }
+]
