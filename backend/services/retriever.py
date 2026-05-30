@@ -15,6 +15,24 @@ def _to_int_if_numeric(value: Any) -> Any:
 def _distance_to_similarity(distance: float) -> float:
     return 1 - distance
 
+def _build_where_filter(session_id: Optional[str], doc_ids: Optional[Sequence[str]]) -> Optional[Dict[str, Any]]:
+    filters: List[Dict[str, Any]] = []
+
+    if session_id:
+        filters.append({"session_id": session_id})
+
+    if doc_ids:
+        doc_ids = [str(d) for d in doc_ids]
+        if len(doc_ids) == 1:
+            filters.append({"doc_id": doc_ids[0]})
+        else:
+            filters.append({"doc_id": {"$in": doc_ids}})
+
+    if not filters:
+        return None
+    if len(filters) == 1:
+        return filters[0]
+    return {"$and": filters}
 
 @dataclass
 class RetrievalConfig:
@@ -58,14 +76,7 @@ class DocumentRetriever:
         n_results = top_k or self.config.top_k
         threshold = min_similarity if min_similarity is not None else self.config.min_similarity
 
-        where: Dict[str, Any] = {}
-        if session_id:
-            where["session_id"] = session_id
-
-        # Chroma supports simple metadata filters. For multiple doc_ids we do $in.
-        # If your Chroma version doesn't support $in, we can do routing by repeated queries per doc_id.
-        if doc_ids:
-            where["doc_id"] = {"$in": list(doc_ids)}
+        where = _build_where_filter(session_id=session_id, doc_ids=doc_ids)
 
         thresholds = [threshold]
         if adaptive:
@@ -76,7 +87,7 @@ class DocumentRetriever:
                 query_embeddings=query_embedding,
                 n_results=n_results,
                 include=["documents", "metadatas", "distances"],
-                where=where or None,
+                where=where,
             )
             results = self._format(raw, min_similarity=t)
             if results:
