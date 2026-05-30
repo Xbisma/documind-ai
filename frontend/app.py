@@ -1,248 +1,493 @@
-import requests
+import uuid
+from typing import Optional
+
 import streamlit as st
 
-BACKEND_URL = "http://127.0.0.1:8000"
+from frontend.ui.sidebar import render_sidebar
+from frontend.ui.evaluation_ui import render_evaluation_tab
+from frontend.services.backend_client import upload_pdfs, search_test, ask
+from frontend.storage.chat_store import (
+    init_db,
+    create_chat,
+    list_chats,
+    delete_chat,
+    add_message,
+    get_messages,
+    # NOTE: you'll add update_chat_session_id() below in task list
+)
+from frontend.storage.docs_store import init_docs_table, add_docs, list_docs
+from frontend.ui.chat_ui import render_citations
+
 
 st.set_page_config(page_title="DocuMind AI", page_icon="🤖", layout="wide")
+
 st.title("DocuMind AI")
-st.write("Upload technical PDFs and ask questions from them.")
+st.caption("Upload PDFs, chat with citations, and run retrieval evaluation.")
+
+# -----------------------------
+# Init persistent storage
+# -----------------------------
+init_db()
+init_docs_table()
 
 # -----------------------------
 # Session State
 # -----------------------------
-if "session_id" not in st.session_state:
-    st.session_state.session_id = None
+if "active_chat_id" not in st.session_state:
+    st.session_state.active_chat_id = None
 
-if "clarification_options" not in st.session_state:
-    st.session_state.clarification_options = []
+if "active_session_id" not in st.session_state:
+    st.session_state.active_session_id = None
+
+if "backend_ok" not in st.session_state:
+    st.session_state.backend_ok = True
+
+if "pending_clarification" not in st.session_state:
+    st.session_state.pending_clarification = None
+
+
+# -----------------------------
+# Helpers
+# -----------------------------
+def _new_chat() -> str:
+    chat_id = str(uuid.uuid4())
+    title = "New chat"
+    session_id = ""
+
+    create_chat(chat_id=chat_id, title=title, session_id=session_id)
+
+    st.session_state.active_chat_id = chat_id
+    st.session_state.active_session_id = None
+    st.session_state.pending_clarification = None
+
+    return chat_id
+
+
+def _load_chat(chat_id: str):
+    chats = list_chats()
+    match = next((c for c in chats if c["chat_id"] == chat_id), None)
+
+    st.session_state.active_chat_id = chat_id
+    st.session_state.active_session_id = (
+        match["session_id"] if match and match["session_id"] else None
+    )
+    st.session_state.pending_clarification = None
+
+
+def _ensure_active_chat():
+    if not st.session_state.active_chat_id:
+        _new_chat()
+
 
 # -----------------------------
 # Sidebar
 # -----------------------------
-with st.sidebar:
-    st.header("Backend Status")
-    try:
-        r = requests.get(f"{BACKEND_URL}/", timeout=5)
-        if r.status_code == 200:
-            st.success("Backend is running")
-        else:
-            st.error(f"Backend error ({r.status_code})")
-    except requests.exceptions.RequestException:
-        st.error("Backend is not running")
-        st.caption("Start it with: uvicorn backend.main:app --reload")
+def _sidebar():
+    with st.sidebar:
+        st.header("Chats")
 
-    st.divider()
-    st.header("Session")
+        chats = list_chats()
 
-    if st.session_state.session_id:
-        st.caption("Active session_id")
-        st.code(st.session_state.session_id, language="text")
-        if st.button("New chat (clear session)"):
-            st.session_state.session_id = None
-            st.session_state.clarification_options = []
-            st.rerun()
-    else:
-        st.info("No session_id yet. Upload PDFs to create one.")
+        col_a, col_b = st.columns(2)
 
-# -----------------------------
-# 1) Upload PDFs
-# -----------------------------
-st.header("1. Upload PDFs")
+        with col_a:
+            if st.button("New chat", type="primary"):
+                _new_chat()
+                st.rerun()
 
-uploaded_files = st.file_uploader(
-    "Upload one or more PDF files",
-    type=["pdf"],
-    accept_multiple_files=True
-)
+        with col_b:
+            if st.session_state.active_chat_id and st.button("Delete chat"):
+                delete_chat(st.session_state.active_chat_id)
+                st.session_state.active_chat_id = None
+                st.session_state.active_session_id = None
+                st.session_state.pending_clarification = None
+                st.rerun()
 
-col_u1, col_u2 = st.columns([1, 1])
-with col_u1:
-    process_btn = st.button("Process PDFs", type="primary")
-with col_u2:
-    upload_into_existing = st.checkbox(
-        "Upload into existing session (if set)",
-        value=True
-    )
+        st.divider()
+        st.caption("Saved chats")
 
-if process_btn:
-    if not uploaded_files:
-        st.warning("Please upload at least one PDF file.")
-    else:
-        files = [
-            ("files", (f.name, f.getvalue(), "application/pdf"))
-            for f in uploaded_files
-        ]
+        if chats:
+            options = {
+                f"{c['title']} · {c['created_at']}": c["chat_id"]
+                for c in chats
+            }
 
-        params = {}
-        if upload_into_existing and st.session_state.session_id:
-            params["session_id"] = st.session_state.session_id
+            labels = list(options.keys())
 
-        try:
-            resp = requests.post(
-                f"{BACKEND_URL}/upload-pdfs/",
-                params=params,
-                files=files,
-                timeout=300
+            current_label = None
+            if st.session_state.active_chat_id:
+                for label, cid in options.items():
+                    if cid == st.session_state.active_chat_id:
+                        current_label = label
+                        break
+
+            chosen = st.selectbox(
+                "Open chat",
+                labels,
+                index=labels.index(current_label)
+                if current_label in labels
+                else 0,
             )
 
-            if resp.status_code != 200:
-                st.error("PDF upload failed.")
-                st.write(resp.text)
+            chosen_id = options[chosen]
+
+            if chosen_id != st.session_state.active_chat_id:
+                _load_chat(chosen_id)
+                st.rerun()
+        else:
+            st.info("No chats yet. Click New chat.")
+
+        st.divider()
+        st.header("Current Session")
+
+        if st.session_state.active_session_id:
+            st.code(st.session_state.active_session_id, language="text")
+        else:
+            st.warning(
+                "No session_id yet. Upload PDFs in this chat to create one."
+            )
+
+        st.divider()
+        st.header("Documents in this chat")
+
+        if st.session_state.active_session_id:
+            docs = list_docs(st.session_state.active_session_id)
+            if docs:
+                for d in docs:
+                    st.write(f"- {d.get('doc_name')}")
             else:
-                data = resp.json()
+                st.caption("No docs stored for this session yet.")
+        else:
+            st.caption("Upload PDFs to see documents list.")
 
-                # Save session_id from backend
-                new_session_id = data.get("session_id")
-                if new_session_id:
-                    st.session_state.session_id = new_session_id
-
-                st.success(f"Processed {data['successful_uploads']} out of {data['total_files']} file(s).")
-                st.caption(f"Session ID: {st.session_state.session_id}")
-
-                for result in data.get("uploaded", []):
-                    if result.get("status") == "success":
-                        with st.expander(f"{result.get('filename')} - success"):
-                            st.write(f"Doc ID: {result.get('doc_id')}")
-                            st.write(f"Pages extracted: {result.get('pages_extracted')}")
-                            st.write(f"Chunks created: {result.get('chunks_created')}")
-                            st.write(f"Chunks stored: {result.get('chunks_stored')}")
-                            st.write(f"Duplicates skipped: {result.get('duplicates_skipped')}")
-                    else:
-                        with st.expander(f"{result.get('filename')} - failed"):
-                            st.error(result.get("error", "Unknown error"))
-
-        except requests.exceptions.RequestException as e:
-            st.error("Could not connect to backend.")
-            st.write(e)
 
 # -----------------------------
-# 2) Retrieval Test (Session-scoped)
+# Render sidebar
 # -----------------------------
-st.header("2. Test Retrieval (Session-scoped)")
+_ensure_active_chat()
 
-retrieval_query = st.text_input(
-    "Search uploaded documents (in this session)",
-    placeholder="Example: install python modules / pip install / execute python script",
+docs_for_sidebar = []
+if st.session_state.active_session_id:
+    docs_for_sidebar = list_docs(st.session_state.active_session_id)
+
+action, selected_chat_id = render_sidebar(
+    chats=list_chats(),
+    active_chat_id=st.session_state.active_chat_id,
+    active_session_id=st.session_state.active_session_id,
+    docs=docs_for_sidebar,
 )
 
-col1, col2, col3 = st.columns(3)
-with col1:
-    top_k = st.slider("Top K chunks", min_value=1, max_value=20, value=5)
-with col2:
-    min_similarity = st.slider("Minimum similarity", min_value=0.0, max_value=1.0, value=0.35, step=0.05)
-with col3:
-    filter_session = st.checkbox("Filter by current session_id", value=True)
+if action == "new":
+    _new_chat()
+    st.rerun()
 
-if st.button("Test Retrieval"):
-    if not retrieval_query.strip():
-        st.warning("Please enter a search query.")
-    elif filter_session and not st.session_state.session_id:
-        st.warning("No session_id yet. Upload PDFs first (or disable session filter).")
+if action == "delete":
+    delete_chat(st.session_state.active_chat_id)
+    st.session_state.active_chat_id = None
+    st.session_state.active_session_id = None
+    st.session_state.pending_clarification = None
+    st.rerun()
+
+if action == "switch" and selected_chat_id:
+    _load_chat(selected_chat_id)
+    st.rerun()
+
+
+# -----------------------------
+# Tabs
+# -----------------------------
+tab_chat, tab_retrieval, tab_eval = st.tabs(
+    ["Chat", "Retrieval Test", "Evaluation"]
+)
+
+
+# =========================================================
+# TAB 1: CHAT
+# =========================================================
+with tab_chat:
+    st.subheader("Chat")
+
+    st.markdown("### Upload PDFs (adds to this chat’s session)")
+
+    uploaded_files = st.file_uploader(
+        "Upload one or more PDF files",
+        type=["pdf"],
+        accept_multiple_files=True,
+        key="uploader_chat",
+    )
+
+    col_u1, col_u2 = st.columns([1, 1])
+
+    with col_u1:
+        do_upload = st.button("Process PDFs", type="primary")
+
+    with col_u2:
+        upload_into_existing = st.checkbox(
+            "Upload into existing session (if set)", value=True
+        )
+
+    if do_upload:
+        if not uploaded_files:
+            st.warning("Please upload at least one PDF.")
+        else:
+            files = [
+                ("files", (f.name, f.getvalue(), "application/pdf"))
+                for f in uploaded_files
+            ]
+
+            session_id_to_use: Optional[str] = None
+
+            if (
+                upload_into_existing
+                and st.session_state.active_session_id
+            ):
+                session_id_to_use = st.session_state.active_session_id
+
+            try:
+                data = upload_pdfs(
+                    files=files,
+                    session_id=session_id_to_use,
+                )
+
+                new_session_id = data.get("session_id")
+
+                if new_session_id:
+                    st.session_state.active_session_id = new_session_id
+
+                    from frontend.storage.chat_store import (
+                        update_chat_session_id,
+                    )
+
+                    update_chat_session_id(
+                        st.session_state.active_chat_id,
+                        new_session_id,
+                    )
+
+                st.success(
+                    f"Processed {data['successful_uploads']} out of "
+                    f"{data['total_files']} file(s)."
+                )
+
+                uploaded_results = data.get("uploaded", []) or []
+
+                success_docs = [
+                    {
+                        "doc_id": r.get("doc_id"),
+                        "filename": r.get("filename"),
+                    }
+                    for r in uploaded_results
+                    if r.get("status") == "success"
+                ]
+
+                if (
+                    st.session_state.active_session_id
+                    and success_docs
+                ):
+                    add_docs(
+                        st.session_state.active_session_id,
+                        success_docs,
+                    )
+
+                for r in uploaded_results:
+                    if r.get("status") == "success":
+                        with st.expander(
+                            f"{r.get('filename')} - success"
+                        ):
+                            st.write(f"Doc ID: {r.get('doc_id')}")
+                            st.write(
+                                f"Pages extracted: {r.get('pages_extracted')}"
+                            )
+                            st.write(
+                                f"Chunks created: {r.get('chunks_created')}"
+                            )
+                            st.write(
+                                f"Chunks stored: {r.get('chunks_stored')}"
+                            )
+                            st.write(
+                                f"Duplicates skipped: {r.get('duplicates_skipped')}"
+                            )
+                    else:
+                        with st.expander(
+                            f"{r.get('filename')} - failed"
+                        ):
+                            st.error(r.get("error", "Unknown error"))
+
+                st.rerun()
+
+            except Exception as e:
+                st.error("Upload failed.")
+                st.write(str(e))
+
+    st.divider()
+
+    st.markdown("### Conversation")
+
+    messages = get_messages(st.session_state.active_chat_id)
+
+    if not messages:
+        st.info(
+            "No messages in this chat yet. Upload PDFs and ask a question."
+        )
     else:
-        params = {
-            "q": retrieval_query.strip(),
-            "top_k": top_k,
-            "min_similarity": min_similarity,
-        }
-        if filter_session and st.session_state.session_id:
-            params["session_id"] = st.session_state.session_id
+        for m in messages:
+            with st.chat_message(m["role"]):
+                st.write(m["content"])
 
-        try:
-            resp = requests.get(f"{BACKEND_URL}/search-test/", params=params, timeout=120)
-            if resp.status_code != 200:
-                st.error("Retrieval test failed.")
-                st.write(resp.text)
-            else:
-                data = resp.json()
+    st.divider()
+
+    st.markdown("### Ask")
+
+    question = st.text_input(
+        "Ask a question (uses this chat session)",
+        key="question_input",
+    )
+
+    if st.button("Send", type="primary"):
+        if not question.strip():
+            st.warning("Please enter a question.")
+        elif not st.session_state.active_session_id:
+            st.warning(
+                "No session_id yet. Upload PDFs in this chat first."
+            )
+        else:
+            add_message(
+                st.session_state.active_chat_id,
+                "user",
+                question.strip(),
+            )
+
+            try:
+                data = ask(
+                    question=question.strip(),
+                    session_id=st.session_state.active_session_id,
+                )
+
+                status = data.get("status")
+
+                if status == "needs_clarification":
+                    add_message(
+                        st.session_state.active_chat_id,
+                        "assistant",
+                        data.get(
+                            "answer",
+                            "Your question needs clarification.",
+                        ),
+                    )
+
+                    st.session_state.pending_clarification = data.get(
+                        "clarification_options",
+                        [],
+                    )
+
+                    st.rerun()
+
+                answer_text = data.get("answer", "")
+
+                add_message(
+                    st.session_state.active_chat_id,
+                    "assistant",
+                    answer_text,
+                )
+
+                with st.chat_message("assistant"):
+                    st.write(answer_text)
+                    render_citations(data.get("citations", []))
+
+                st.rerun()
+
+            except Exception as e:
+                add_message(
+                    st.session_state.active_chat_id,
+                    "assistant",
+                    "Ask failed (backend error).",
+                )
+                st.error("Ask failed.")
+                st.write(str(e))
+
+
+# =========================================================
+# TAB 2: RETRIEVAL
+# =========================================================
+with tab_retrieval:
+    st.subheader("Retrieval Test (Session-scoped)")
+
+    q = st.text_input(
+        "Search query",
+        key="retrieval_q",
+    )
+
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        top_k = st.slider("Top K", 1, 20, 5)
+
+    with col2:
+        min_sim = st.slider(
+            "Min similarity",
+            0.0,
+            1.0,
+            0.35,
+            0.05,
+        )
+
+    with col3:
+        filter_session = st.checkbox(
+            "Filter by current session_id",
+            value=True,
+        )
+
+    if st.button("Run Retrieval Test"):
+        if not q.strip():
+            st.warning("Enter a query.")
+        elif (
+            filter_session
+            and not st.session_state.active_session_id
+        ):
+            st.warning(
+                "No session_id in this chat yet. Upload PDFs first."
+            )
+        else:
+            session_id = (
+                st.session_state.active_session_id
+                if filter_session
+                else None
+            )
+
+            try:
+                data = search_test(
+                    query=q.strip(),
+                    session_id=session_id,
+                    top_k=top_k,
+                    min_similarity=min_sim,
+                )
+
                 st.write(data.get("message", ""))
 
                 results = data.get("results", [])
+
                 if not results:
                     st.warning("No reliable chunks found.")
                 else:
                     for i, r in enumerate(results, start=1):
                         md = r.get("metadata", {}) or {}
-                        with st.expander(f"Result {i} | Score: {r.get('similarity_score')} | {md.get('doc_name')}"):
-                            st.write(f"Chunk ID: {r.get('chunk_id')}")
-                            st.write(f"Doc ID: {md.get('doc_id')}")
-                            st.write(f"Document: {md.get('doc_name')}")
-                            st.write(f"Page: {md.get('page_number')}")
-                            st.write(f"Chunk: {md.get('page_chunk_index')}")
-                            st.write("Text:")
+
+                        with st.expander(
+                            f"Result {i} | {md.get('doc_name')} | "
+                            f"score={r.get('similarity_score')}"
+                        ):
+                            st.write(md.get("doc_name"))
+                            st.write(md.get("page_number"))
                             st.write(r.get("text", ""))
 
-        except requests.exceptions.RequestException as e:
-            st.error("Could not connect to backend.")
-            st.write(e)
+            except Exception as e:
+                st.error("Retrieval test failed.")
+                st.write(str(e))
 
-# -----------------------------
-# 3) Ask a Question
-# -----------------------------
-st.header("3. Ask a Question (RAG)")
 
-question = st.text_input(
-    "Ask a question from your uploaded documents (in this session)",
-    placeholder="Example: How do I create a git repo? / How do I execute it?",
-)
-
-if st.button("Ask", type="primary"):
-    if not question.strip():
-        st.warning("Please enter a question.")
-    elif not st.session_state.session_id:
-        st.warning("No session_id yet. Upload PDFs first.")
-    else:
-        payload = {"question": question.strip(), "session_id": st.session_state.session_id}
-
-        try:
-            resp = requests.post(f"{BACKEND_URL}/ask", json=payload, timeout=180)
-            if resp.status_code != 200:
-                st.error("Ask failed.")
-                st.write(resp.text)
-            else:
-                data = resp.json()
-                status = data.get("status")
-                st.caption(f"Status: {status}")
-
-                if status == "needs_clarification":
-                    st.warning(data.get("answer", "Your question needs clarification."))
-                    opts = data.get("clarification_options", []) or []
-                    st.session_state.clarification_options = opts
-
-                    if opts:
-                        st.subheader("Choose a document to clarify (then re-ask more specifically)")
-                        labels = [f"{o.get('doc_name')} ({o.get('doc_id')})" for o in opts]
-                        st.selectbox("Documents", options=labels)
-
-                        st.info(
-                            "For now, re-ask with details.\n\n"
-                            "Example:\n"
-                            "- Instead of: 'How do I execute it?'\n"
-                            "- Ask: 'How do I execute a Python script?'"
-                        )
-                    else:
-                        st.info("No clarification options were returned.")
-
-                else:
-                    st.subheader("Answer")
-                    st.write(data.get("answer", ""))
-
-                    st.subheader("Rewritten Query")
-                    st.write(data.get("rewritten_query", ""))
-
-                    citations = data.get("citations", [])
-                    if citations:
-                        st.subheader("Citations")
-                        for c in citations:
-                            st.markdown(
-                                f"""
-**Document:** {c.get("doc_name")}   
-**Page:** {c.get("page_number")}  
-**Snippet:** {c.get("snippet")}
-"""
-                            )
-                    else:
-                        st.info("No citations returned.")
-
-        except requests.exceptions.RequestException as e:
-            st.error("Could not connect to backend.")
-            st.write(e)
+# =========================================================
+# TAB 3: EVALUATION
+# =========================================================
+with tab_eval:
+    render_evaluation_tab(
+        default_session_id=st.session_state.active_session_id or ""
+    )
