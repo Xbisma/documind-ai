@@ -24,6 +24,16 @@ def is_vague_question(question: str) -> bool:
     return bool(_VAGUE_REGEX.search(q))
 
 
+def rewrite_query(user_query: str, chat_context: Optional[str] = None) -> str:
+    """
+    Backward-compatible wrapper around the conservative rewriter.
+    """
+    rewritten = rewrite_query_if_needed(user_query)
+    if chat_context and rewritten == (user_query or "").strip():
+        return f"{rewritten} Context: {chat_context}"
+    return rewritten
+
+
 def rewrite_query_if_needed(question: str, *, doc_hint: Optional[str] = None) -> str:
     """
     Rewrite only if vague. Otherwise return original question.
