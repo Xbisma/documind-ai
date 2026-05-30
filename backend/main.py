@@ -45,6 +45,7 @@ app.openapi = custom_openapi
 
 class QuestionRequest(BaseModel):
     question: str
+    session_id: str # REQUIRED
 
 rag_service = RAGAnswerService()
 
@@ -101,6 +102,7 @@ async def upload_pdfs(
 @app.get("/search-test/")
 def search_test(
     q: str = Query(..., description="Search query"),
+    session_id: Optional[str] = Query(None, description="Filter retrieval to this session_id"),
     top_k: int = Query(5, ge=1, le=20),
     min_similarity: float = Query(0.35, ge=0.0, le=1.0)
 ):
@@ -110,6 +112,7 @@ def search_test(
     """
     return retrieve_relevant_chunks(
         query=q,
+        session_id=session_id,
         top_k=top_k,
         min_similarity=min_similarity
     )
@@ -131,5 +134,8 @@ def test_chunks():
 
 @app.post("/ask")
 def ask_question(request: QuestionRequest):
-    result = rag_service.answer_question(request.question)
+    result = rag_service.answer_question(
+        question=request.question,
+        session_id=request.session_id,
+    )
     return result
