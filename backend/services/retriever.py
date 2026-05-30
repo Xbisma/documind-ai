@@ -82,13 +82,13 @@ class DocumentRetriever:
         if adaptive:
             thresholds += [t for t in self.config.fallback_thresholds if t < threshold]
 
+        raw = self.collection.query(
+            query_embeddings=query_embedding,
+            n_results=n_results,
+            include=["documents", "metadatas", "distances"],
+            where=where,
+        )
         for t in thresholds:
-            raw = self.collection.query(
-                query_embeddings=query_embedding,
-                n_results=n_results,
-                include=["documents", "metadatas", "distances"],
-                where=where,
-            )
             results = self._format(raw, min_similarity=t)
             if results:
                 return results
