@@ -13,3 +13,4 @@ chroma_db/
 backend/uploaded_pdfs/
 uploaded_pdfs/
 *.pdf
+*.db

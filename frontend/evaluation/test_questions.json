@@ -1,9 +1,202 @@
 [
- {
- "pdf_set_name": "python_docs",
- "expected_doc_name": "executing_python_scripts.pdf",
- "question": "How do I run a Python script from the terminal?",
- "expected_answer_keywords": ["python", ".py", "terminal"],
- "type": "procedure"
- }
+  {
+    "pdf_set_name": "python_docs",
+    "expected_doc_name": "executing_python_scripts.pdf",
+    "expected_source_page": 3,
+    "question": "How do I run a Python script from the terminal?",
+    "expected_answer_keywords": ["python", ".py", "terminal"],
+    "type": "procedure"
+  },
+  {
+    "pdf_set_name": "python_docs",
+    "expected_doc_name": "executing_python_scripts.pdf",
+    "expected_source_page": 4,
+    "question": "How do you execute a Python file using the python3 command?",
+    "expected_answer_keywords": ["python3", "filename", ".py", "command"],
+    "type": "procedure"
+  },
+  {
+    "pdf_set_name": "python_docs",
+    "expected_doc_name": "executing_python_scripts.pdf",
+    "expected_source_page": 5,
+    "question": "What is the difference between running a Python script with python and python3?",
+    "expected_answer_keywords": ["python", "python3", "version", "interpreter"],
+    "type": "conceptual"
+  },
+  {
+    "pdf_set_name": "python_docs",
+    "expected_doc_name": "executing_python_scripts.pdf",
+    "expected_source_page": 6,
+    "question": "How can you make a Python script executable on Linux or Mac?",
+    "expected_answer_keywords": ["chmod", "+x", "shebang", "#!/usr/bin/env python3"],
+    "type": "procedure"
+  },
+  {
+    "pdf_set_name": "python_docs",
+    "expected_doc_name": "executing_python_scripts.pdf",
+    "expected_source_page": 7,
+    "question": "What does the shebang line do in a Python script?",
+    "expected_answer_keywords": ["shebang", "#!/usr/bin/env", "interpreter", "executable"],
+    "type": "conceptual"
+  },
+  {
+    "pdf_set_name": "installing_python_modules",
+    "expected_doc_name": "installing_python_modules.pdf",
+    "expected_source_page": 2,
+    "question": "How do you install a Python package using pip?",
+    "expected_answer_keywords": ["pip", "install", "package", "terminal"],
+    "type": "procedure"
+  },
+  {
+    "pdf_set_name": "installing_python_modules",
+    "expected_doc_name": "installing_python_modules.pdf",
+    "expected_source_page": 3,
+    "question": "What command is used to install a specific version of a Python package?",
+    "expected_answer_keywords": ["pip", "install", "==", "version"],
+    "type": "procedure"
+  },
+  {
+    "pdf_set_name": "installing_python_modules",
+    "expected_doc_name": "installing_python_modules.pdf",
+    "expected_source_page": 4,
+    "question": "How do you list all installed Python packages?",
+    "expected_answer_keywords": ["pip", "list", "installed", "packages"],
+    "type": "procedure"
+  },
+  {
+    "pdf_set_name": "installing_python_modules",
+    "expected_doc_name": "installing_python_modules.pdf",
+    "expected_source_page": 5,
+    "question": "What is a virtual environment and why is it used in Python?",
+    "expected_answer_keywords": ["virtual environment", "venv", "isolated", "dependencies"],
+    "type": "conceptual"
+  },
+  {
+    "pdf_set_name": "installing_python_modules",
+    "expected_doc_name": "installing_python_modules.pdf",
+    "expected_source_page": 6,
+    "question": "How do you create and activate a virtual environment in Python?",
+    "expected_answer_keywords": ["python -m venv", "activate", "source", "venv"],
+    "type": "procedure"
+  },
+  {
+    "pdf_set_name": "github_docs",
+    "expected_doc_name": "github_getting_started.pdf",
+    "expected_source_page": 2,
+    "question": "How do you create a new repository on GitHub?",
+    "expected_answer_keywords": ["repository", "new", "github", "create"],
+    "type": "procedure"
+  },
+  {
+    "pdf_set_name": "github_docs",
+    "expected_doc_name": "github_getting_started.pdf",
+    "expected_source_page": 3,
+    "question": "What is the difference between git clone and git fork on GitHub?",
+    "expected_answer_keywords": ["clone", "fork", "copy", "repository"],
+    "type": "conceptual"
+  },
+  {
+    "pdf_set_name": "github_docs",
+    "expected_doc_name": "github_getting_started.pdf",
+    "expected_source_page": 4,
+    "question": "How do you push local changes to a GitHub repository?",
+    "expected_answer_keywords": ["git push", "origin", "main", "remote"],
+    "type": "procedure"
+  },
+  {
+    "pdf_set_name": "github_docs",
+    "expected_doc_name": "github_getting_started.pdf",
+    "expected_source_page": 5,
+    "question": "What is a pull request on GitHub and how do you create one?",
+    "expected_answer_keywords": ["pull request", "merge", "branch", "changes"],
+    "type": "conceptual"
+  },
+  {
+    "pdf_set_name": "github_docs",
+    "expected_doc_name": "github_getting_started.pdf",
+    "expected_source_page": 6,
+    "question": "How do you resolve a merge conflict in GitHub?",
+    "expected_answer_keywords": ["merge conflict", "resolve", "branch", "commit"],
+    "type": "procedure"
+  },
+  {
+    "pdf_set_name": "manuals_docs",
+    "expected_doc_name": "user_manual.pdf",
+    "expected_source_page": 2,
+    "question": "How do I get started with the device according to the manual?",
+    "expected_answer_keywords": ["setup", "device", "power", "start"],
+    "type": "procedure"
+  },
+  {
+    "pdf_set_name": "manuals_docs",
+    "expected_doc_name": "user_manual.pdf",
+    "expected_source_page": 3,
+    "question": "How do you perform the initial setup process?",
+    "expected_answer_keywords": ["setup", "configuration", "steps", "device"],
+    "type": "procedure"
+  },
+  {
+    "pdf_set_name": "manuals_docs",
+    "expected_doc_name": "user_manual.pdf",
+    "expected_source_page": 4,
+    "question": "What do the status indicator lights mean?",
+    "expected_answer_keywords": ["indicator", "lights", "status", "meaning"],
+    "type": "conceptual"
+  },
+  {
+    "pdf_set_name": "manuals_docs",
+    "expected_doc_name": "user_manual.pdf",
+    "expected_source_page": 5,
+    "question": "How do you reset the device to factory settings?",
+    "expected_answer_keywords": ["reset", "factory", "settings", "restore"],
+    "type": "procedure"
+  },
+  {
+    "pdf_set_name": "manuals_docs",
+    "expected_doc_name": "user_manual.pdf",
+    "expected_source_page": 6,
+    "question": "What troubleshooting steps are recommended for startup issues?",
+    "expected_answer_keywords": ["troubleshooting", "startup", "problem", "solution"],
+    "type": "procedure"
+  },
+  {
+    "pdf_set_name": "network_configuration",
+    "expected_doc_name": "network_configuration_guide.pdf",
+    "expected_source_page": 2,
+    "question": "How do you configure a static IP address on a network device?",
+    "expected_answer_keywords": ["static", "IP", "address", "configuration"],
+    "type": "procedure"
+  },
+  {
+    "pdf_set_name": "network_configuration",
+    "expected_doc_name": "network_configuration_guide.pdf",
+    "expected_source_page": 3,
+    "question": "What is the difference between a static IP and a dynamic IP?",
+    "expected_answer_keywords": ["static", "dynamic", "IP", "DHCP"],
+    "type": "conceptual"
+  },
+  {
+    "pdf_set_name": "network_configuration",
+    "expected_doc_name": "network_configuration_guide.pdf",
+    "expected_source_page": 4,
+    "question": "How do you configure DNS settings manually?",
+    "expected_answer_keywords": ["DNS", "server", "manual", "configuration"],
+    "type": "procedure"
+  },
+  {
+    "pdf_set_name": "network_configuration",
+    "expected_doc_name": "network_configuration_guide.pdf",
+    "expected_source_page": 5,
+    "question": "What is the purpose of a subnet mask in networking?",
+    "expected_answer_keywords": ["subnet", "mask", "network", "host"],
+    "type": "conceptual"
+  },
+  {
+    "pdf_set_name": "network_configuration",
+    "expected_doc_name": "network_configuration_guide.pdf",
+    "expected_source_page": 6,
+    "question": "How do you verify network connectivity from the command line?",
+    "expected_answer_keywords": ["ping", "connectivity", "network", "command"],
+    "type": "procedure"
+  }
 ]

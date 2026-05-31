@@ -1,9 +1,14 @@
 import uuid
+import sys
+from pathlib import Path
 from typing import Optional
+
+ROOT_DIR = Path(__file__).resolve().parents[1]
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
 
 import streamlit as st
 
-from frontend.ui.sidebar import render_sidebar
 from frontend.ui.evaluation_ui import render_evaluation_tab
 from frontend.services.backend_client import upload_pdfs, search_test, ask
 from frontend.storage.chat_store import (
@@ -165,32 +170,7 @@ def _sidebar():
 # Render sidebar
 # -----------------------------
 _ensure_active_chat()
-
-docs_for_sidebar = []
-if st.session_state.active_session_id:
-    docs_for_sidebar = list_docs(st.session_state.active_session_id)
-
-action, selected_chat_id = render_sidebar(
-    chats=list_chats(),
-    active_chat_id=st.session_state.active_chat_id,
-    active_session_id=st.session_state.active_session_id,
-    docs=docs_for_sidebar,
-)
-
-if action == "new":
-    _new_chat()
-    st.rerun()
-
-if action == "delete":
-    delete_chat(st.session_state.active_chat_id)
-    st.session_state.active_chat_id = None
-    st.session_state.active_session_id = None
-    st.session_state.pending_clarification = None
-    st.rerun()
-
-if action == "switch" and selected_chat_id:
-    _load_chat(selected_chat_id)
-    st.rerun()
+_sidebar()
 
 
 # -----------------------------
