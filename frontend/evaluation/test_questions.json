@@ -199,4 +199,8 @@
     "expected_answer_keywords": ["ping", "connectivity", "network", "command"],
     "type": "procedure"
   }
+<<<<<<< HEAD
 ]
+=======
+]   
+>>>>>>> 9c4462131cb6652ad742dc1eeda42851f6c89134
