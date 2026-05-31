@@ -1,141 +1,59 @@
-from typing import List, Optional
-from uuid import uuid4
+import os
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
 
-from fastapi import FastAPI, File, Query, UploadFile
-from fastapi.openapi.utils import get_openapi
-from fastapi.middleware.cors import CORSMiddleware
-
-from backend.services.pdf_pipeline import process_uploaded_pdf
-from backend.services.retriever import retrieve_relevant_chunks
-from backend.services.embedder import backfill_chunk_metadata, get_chroma_collection
-
-from pydantic import BaseModel
-from backend.services.rag_chain import RAGAnswerService
-
-app = FastAPI(title="DocuMind AI", version="1.0.0")
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+from backend.services.doc_store import (
+    find_doc_source_path,
+    list_docs_for_session,
 )
 
-def custom_openapi():
-    if app.openapi_schema:
-        return app.openapi_schema
+app = FastAPI()
 
-    openapi_schema = get_openapi(
-        title=app.title,
-        version=app.version,
-        routes=app.routes,
-    )
 
-    upload_schema = openapi_schema["components"]["schemas"]["Body_upload_pdfs_upload_pdfs__post"]
-    upload_schema["properties"]["files"]["items"] = {
-        "type": "string",
-        "format": "binary",
-    }
+# After /ask endpoint, add:
 
-    openapi_schema["openapi"] = "3.0.3"
-    app.openapi_schema = openapi_schema
-    return app.openapi_schema
-
-app.openapi = custom_openapi
-
-class QuestionRequest(BaseModel):
-    question: str
-    session_id: str # REQUIRED
-
-rag_service = RAGAnswerService()
-
-@app.get("/")
-def home():
-    return {"message": "DocuMind AI backend is running!"}
-
-@app.post("/upload-pdfs/")
-async def upload_pdfs(
-    files: List[UploadFile] = File(...),
-    session_id: Optional[str] = Query(
-        default=None,
-        description="Optional session/chat id. If omitted, backend generates one."
-    ),
-):
+@app.get("/sessions/{session_id}/docs")
+def get_session_docs(session_id: str):
     """
-    Uploads multiple PDFs and processes them into searchable vector chunks.
+    Lists uploaded documents in a session (from Chroma metadata).
     """
-    if not session_id:
-        session_id = str(uuid4())
 
-    results = []
-    for file in files:
-        try:
-            # pass session_id into pipeline
-            result = process_uploaded_pdf(file, session_id=session_id)
-            results.append(result)
-
-        except ValueError as error:
-            results.append({
-                "filename": file.filename,
-                "status": "failed",
-                "error": str(error)
-            })
-
-        except Exception as error:
-            results.append({
-                "filename": file.filename,
-                "status": "failed",
-                "error": f"Failed to process file: {error}"
-            })
-
-    successful_uploads = [r for r in results if r.get("status") == "success"]
-    failed_uploads = [r for r in results if r.get("status") == "failed"]
+    docs = list_docs_for_session(session_id=session_id)
 
     return {
-        "session_id": session_id,   # <-- NEW
-        "total_files": len(files),
-        "successful_uploads": len(successful_uploads),
-        "failed_uploads": len(failed_uploads),
-        "uploaded": results
+        "session_id": session_id,
+        "docs": docs,
     }
 
-@app.get("/search-test/")
-def search_test(
-    q: str = Query(..., description="Search query"),
-    session_id: Optional[str] = Query(None, description="Filter retrieval to this session_id"),
-    top_k: int = Query(5, ge=1, le=20),
-    min_similarity: float = Query(0.35, ge=0.0, le=1.0)
-):
+
+@app.get("/sessions/{session_id}/docs/{doc_id}/download")
+def download_doc(session_id: str, doc_id: str):
     """
-    Tests retrieval before connecting to LLM.
-    This is for Bisma's retrieval + LLM work.
+    Downloads the original uploaded PDF for a given session_id + doc_id.
     """
-    return retrieve_relevant_chunks(
-        query=q,
+
+    info = find_doc_source_path(
         session_id=session_id,
-        top_k=top_k,
-        min_similarity=min_similarity
+        doc_id=doc_id,
     )
 
-@app.get("/test-chunks/")
-def test_chunks():
-    """
-    Shows a few stored chunks from ChromaDB.
-    Useful for checking whether ingestion worked.
-    """
-    backfill_summary = backfill_chunk_metadata()
-    collection = get_chroma_collection()
-    results = collection.get(limit=5, include=["documents", "metadatas"])
+    if not info:
+        raise HTTPException(
+            status_code=404,
+            detail="Document not found for this session_id/doc_id.",
+        )
 
-    return {
-        "backfill": backfill_summary,
-        "results": results,
-    }
+    doc_name, source_path = info
 
-@app.post("/ask")
-def ask_question(request: QuestionRequest):
-    result = rag_service.answer_question(
-        question=request.question,
-        session_id=request.session_id,
+    if not source_path or not os.path.exists(source_path):
+        raise HTTPException(
+            status_code=404,
+            detail="PDF file missing on server.",
+        )
+
+    # Return as application/pdf with the original filename
+    return FileResponse(
+        source_path,
+        media_type="application/pdf",
+        filename=doc_name,
     )
-    return result
