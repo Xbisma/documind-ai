@@ -3,9 +3,13 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-ROOT_DIR = Path(__file__).resolve().parents[1]
+ROOT_DIR = Path(__file__).resolve().parents[1]  # repo root (documind-ai)
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
+    
+from frontend.storage.docs_store import init_docs_table, add_docs, list_docs, get_first_doc_name
+
+
 
 import streamlit as st
 
@@ -340,14 +344,15 @@ with tab_chat:
                 "user",
                 question.strip(),
             )
-            
+
+            # If title still default, set it from first uploaded PDF name
             try:
-                # If title still default, name chat after first uploaded PDF
                 chats_now = list_chats()
                 current = next((c for c in chats_now if c["chat_id"] == st.session_state.active_chat_id), None)
                 if current and (current.get("title") in (None, "", "New chat")):
-                    first_pdf = uploaded_results[0].get("filename") if uploaded_results else "PDF chat"
-                    update_chat_title(st.session_state.active_chat_id, f"Docs: {first_pdf}")
+                    doc_title = get_first_doc_name(st.session_state.active_session_id or "")
+                    if doc_title:
+                        update_chat_title(st.session_state.active_chat_id, f"Docs: {doc_title}")
             except Exception:
                 pass
 

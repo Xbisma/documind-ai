@@ -49,3 +49,14 @@ def list_docs(session_id: str) -> List[Dict[str, Any]]:
         ).fetchall()
 
         return [{"doc_id": r[0], "doc_name": r[1]} for r in rows]
+
+
+def get_first_doc_name(session_id: str) -> str:
+    if not session_id:
+        return ""
+    with _conn() as c:
+        row = c.execute(
+            "SELECT doc_name FROM session_docs WHERE session_id = ? ORDER BY id ASC LIMIT 1",
+            (session_id,),
+        ).fetchone()
+        return row[0] if row else ""
