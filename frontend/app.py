@@ -68,20 +68,25 @@ if "pending_clarification" not in st.session_state:
 # -----------------------------
 # URL routing: ?chat=<chat_id>
 # -----------------------------
+url_chat = None
 try:
-    qp = st.query_params
-    url_chat = qp.get("chat")
+    url_chat = st.query_params.get("chat")
 except Exception:
     url_chat = None
 
-if url_chat and "active_chat_id" in st.session_state:
-    # if URL says a chat and it's different, load it
-    if st.session_state.active_chat_id != url_chat:
-        st.session_state.active_chat_id = url_chat
-        # load session_id from DB if exists
+if url_chat:
+    chat = get_chat(url_chat)
+    if chat:
+        if st.session_state.active_chat_id != url_chat:
+            st.session_state.active_chat_id = url_chat
+            st.session_state.active_session_id = chat.get("session_id") or None
+            st.session_state.pending_clarification = None
+            if "question_input" in st.session_state:
+                st.session_state.question_input = ""
+    else:
+        # If URL points to a non-existent chat, remove it
         try:
-            chat = get_chat(url_chat)
-            st.session_state.active_session_id = chat["session_id"] if chat and chat.get("session_id") else None
+            del st.query_params["chat"]
         except Exception:
             pass
 
@@ -95,10 +100,15 @@ def _new_chat() -> str:
 
     create_chat(chat_id=chat_id, title=title, session_id=session_id)
 
+    # Use the same switch logic as selecting a chat
     st.session_state.active_chat_id = chat_id
     st.session_state.active_session_id = None
     st.session_state.pending_clarification = None
 
+    if "question_input" in st.session_state:
+        st.session_state.question_input = ""
+
+    st.query_params["chat"] = chat_id
     return chat_id
 
 
@@ -112,6 +122,22 @@ def _load_chat(chat_id: str):
     )
     st.session_state.pending_clarification = None
 
+def _set_active_chat(chat_id: str) -> None:
+    """
+    Single source of truth for switching chats.
+    Ensures state + URL are consistent and dependent UI state is cleared.
+    """
+    _load_chat(chat_id)
+
+    # Clear chat-scoped UI state
+    st.session_state.pending_clarification = None
+
+    # Clear inputs so they don't "carry over"
+    if "question_input" in st.session_state:
+        st.session_state.question_input = ""
+
+    # Update URL
+    st.query_params["chat"] = chat_id
 
 def _ensure_active_chat():
     if not st.session_state.active_chat_id:
@@ -135,22 +161,20 @@ if action == "new_chat":
     st.rerun()
 
 if action == "select_chat" and selected_chat_id:
-    _load_chat(selected_chat_id)
-    st.query_params["chat"] = selected_chat_id
+    _set_active_chat(selected_chat_id)
     st.rerun()
 
 if action == "delete_chat" and selected_chat_id:
     delete_chat(selected_chat_id)
-    # if deleted active, reset
-    if selected_chat_id == st.session_state.active_chat_id:
-        st.session_state.active_chat_id = None
-        st.session_state.active_session_id = None
-        st.toast("Chat deleted", icon="🗑️")
-    st.rerun()
 
-# keep URL in sync
-if st.session_state.active_chat_id:
-    st.query_params["chat"] = st.session_state.active_chat_id
+    # If we deleted the active chat, immediately create + switch to a new one
+    if selected_chat_id == st.session_state.active_chat_id:
+        st.toast("Chat deleted", icon="🗑️")
+        _new_chat()
+        st.rerun()
+    else:
+        st.toast("Chat deleted", icon="🗑️")
+        st.rerun()
 
 # -----------------------------
 # Tabs
