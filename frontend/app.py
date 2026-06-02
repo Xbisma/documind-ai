@@ -42,6 +42,11 @@ st.caption("Upload PDFs, chat with citations, and run retrieval evaluation.")
 # Init persistent storage
 # -----------------------------
 init_db()
+
+st.sidebar.caption("DEBUG: DB file path")
+from frontend.storage import chat_store
+st.sidebar.code(chat_store.DB_PATH, language="text")
+
 init_docs_table()
 
 # -----------------------------
@@ -140,6 +145,7 @@ if action == "delete_chat" and selected_chat_id:
     if selected_chat_id == st.session_state.active_chat_id:
         st.session_state.active_chat_id = None
         st.session_state.active_session_id = None
+        st.toast("Chat deleted", icon="🗑️")
     st.rerun()
 
 # keep URL in sync
@@ -312,6 +318,7 @@ with tab_chat:
             # If this chat is still default title, update it based on the first user question
             try:
                 chats = list_chats()
+                st.sidebar.caption(f"DEBUG: chats found = {len(chats)}")
                 current = next((c for c in chats if c["chat_id"] == st.session_state.active_chat_id), None)
                 if current and (current.get("title") in (None, "", "New chat")):
                     words = question.strip().split()

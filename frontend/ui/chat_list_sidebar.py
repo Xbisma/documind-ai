@@ -28,8 +28,7 @@ def render_chatgpt_sidebar(
 
         col1, col2 = st.columns(2)
         new_clicked = col1.button("New chat", type="primary", use_container_width=True)
-        # delete handled per-row now; keep a global delete optional
-        col2.button(" ", disabled=True, use_container_width=True)
+        delete_active_clicked = col2.button("Delete chat", use_container_width=True, disabled=not bool(active_chat_id))
 
         st.divider()
 
@@ -120,5 +119,8 @@ def render_chatgpt_sidebar(
 
         if new_clicked:
             return selected_chat_id, "new_chat"
+
+        if delete_active_clicked and active_chat_id:
+            return active_chat_id, "delete_chat"
 
         return selected_chat_id, action

@@ -3,12 +3,15 @@ import os
 from typing import List, Dict, Any
 from datetime import datetime, timezone
 
-DB_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "chats.db"))
+from pathlib import Path
+
+ROOT_DIR = Path(__file__).resolve().parents[2]  # documind-ai/
+DB_PATH = str((ROOT_DIR / ".local" / "chats.db").resolve())
 
 
 def _conn():
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-    return sqlite3.connect(DB_PATH)
+    return sqlite3.connect(DB_PATH, check_same_thread=False)
 
 
 def init_docs_table():
