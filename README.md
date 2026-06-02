@@ -223,8 +223,10 @@ Basic Usage Flow
 ```text
 1. Start FastAPI backend
 2. Start Streamlit frontend
-3. Upload one or multiple PDFs
-4. Wait for PDF processing to complete
-5. Ask a question from uploaded documents
-6. View answer and citations
+3. New chat
+4. Upload one or multiple PDFs
+5. Wait for PDF processing to complete
+6. Run Evaluation tab → “Run E2E Evaluation”
+7. Ask 2–3 questions and show citations + confidence
+8. Show generated report file `evaluation/e2e_report.md`
 ```

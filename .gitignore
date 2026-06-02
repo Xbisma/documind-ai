@@ -14,3 +14,4 @@ backend/uploaded_pdfs/
 uploaded_pdfs/
 *.pdf
 *.db
+frontend/evaluation/retrieval_report.md
