@@ -88,3 +88,22 @@ def get_messages(chat_id: str) -> List[Dict[str, str]]:
         ).fetchall()
 
         return [{"role": r[0], "content": r[1]} for r in rows]
+
+
+def update_chat_title(chat_id: str, title: str) -> None:
+    with _conn() as c:
+        c.execute(
+            "UPDATE chats SET title = ? WHERE chat_id = ?",
+            (title, chat_id)
+        )
+
+
+def get_chat(chat_id: str) -> Optional[Dict[str, Any]]:
+    with _conn() as c:
+        row = c.execute(
+            "SELECT chat_id, title, session_id, created_at FROM chats WHERE chat_id = ?",
+            (chat_id,)
+        ).fetchone()
+        if not row:
+            return None
+        return {"chat_id": row[0], "title": row[1], "session_id": row[2], "created_at": row[3]}

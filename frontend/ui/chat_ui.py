@@ -16,9 +16,4 @@ def render_citations(citations: List[Dict[str, Any]]) -> None:
 
         with st.expander(f"Citation {i}: {doc} (Page {page})"):
             st.markdown(
-                f"""
-**Document:** {doc}  
-**Page:** {page}  
-**Snippet:** {snippet}
-"""
-            )
+                f""" **Document:** {doc}  **Page:** {page}  **Snippet:** {snippet} """)

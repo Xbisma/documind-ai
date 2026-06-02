@@ -11,20 +11,29 @@ import streamlit as st
 
 from frontend.ui.evaluation_ui import render_evaluation_tab
 from frontend.services.backend_client import upload_pdfs, search_test, ask
-from frontend.storage.chat_store import (
-    init_db,
-    create_chat,
-    list_chats,
-    delete_chat,
-    add_message,
-    get_messages,
-    # NOTE: you'll add update_chat_session_id() below in task list
-)
+from frontend.storage.chat_store import init_db, create_chat, list_chats, delete_chat, add_message, get_messages, update_chat_title, get_chat
+
 from frontend.storage.docs_store import init_docs_table, add_docs, list_docs
 from frontend.ui.chat_ui import render_citations
 
+from frontend.ui.chat_list_sidebar import render_chatgpt_sidebar
+
 
 st.set_page_config(page_title="DocuMind AI", page_icon="🤖", layout="wide")
+
+st.markdown(
+    """
+    <style>
+      .block-container { padding-top: 2.2rem; }
+      h1, h2, h3 { letter-spacing: -0.02em; }
+      /* make tabs look cleaner */
+      div[data-baseweb="tab-list"] button {
+        font-weight: 600;
+      }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
 st.title("DocuMind AI")
 st.caption("Upload PDFs, chat with citations, and run retrieval evaluation.")
@@ -50,6 +59,26 @@ if "backend_ok" not in st.session_state:
 if "pending_clarification" not in st.session_state:
     st.session_state.pending_clarification = None
 
+
+# -----------------------------
+# URL routing: ?chat=<chat_id>
+# -----------------------------
+try:
+    qp = st.query_params
+    url_chat = qp.get("chat")
+except Exception:
+    url_chat = None
+
+if url_chat and "active_chat_id" in st.session_state:
+    # if URL says a chat and it's different, load it
+    if st.session_state.active_chat_id != url_chat:
+        st.session_state.active_chat_id = url_chat
+        # load session_id from DB if exists
+        try:
+            chat = get_chat(url_chat)
+            st.session_state.active_session_id = chat["session_id"] if chat and chat.get("session_id") else None
+        except Exception:
+            pass
 
 # -----------------------------
 # Helpers
@@ -83,95 +112,39 @@ def _ensure_active_chat():
     if not st.session_state.active_chat_id:
         _new_chat()
 
-
-# -----------------------------
-# Sidebar
-# -----------------------------
-def _sidebar():
-    with st.sidebar:
-        st.header("Chats")
-
-        chats = list_chats()
-
-        col_a, col_b = st.columns(2)
-
-        with col_a:
-            if st.button("New chat", type="primary"):
-                _new_chat()
-                st.rerun()
-
-        with col_b:
-            if st.session_state.active_chat_id and st.button("Delete chat"):
-                delete_chat(st.session_state.active_chat_id)
-                st.session_state.active_chat_id = None
-                st.session_state.active_session_id = None
-                st.session_state.pending_clarification = None
-                st.rerun()
-
-        st.divider()
-        st.caption("Saved chats")
-
-        if chats:
-            options = {
-                f"{c['title']} · {c['created_at']}": c["chat_id"]
-                for c in chats
-            }
-
-            labels = list(options.keys())
-
-            current_label = None
-            if st.session_state.active_chat_id:
-                for label, cid in options.items():
-                    if cid == st.session_state.active_chat_id:
-                        current_label = label
-                        break
-
-            chosen = st.selectbox(
-                "Open chat",
-                labels,
-                index=labels.index(current_label)
-                if current_label in labels
-                else 0,
-            )
-
-            chosen_id = options[chosen]
-
-            if chosen_id != st.session_state.active_chat_id:
-                _load_chat(chosen_id)
-                st.rerun()
-        else:
-            st.info("No chats yet. Click New chat.")
-
-        st.divider()
-        st.header("Current Session")
-
-        if st.session_state.active_session_id:
-            st.code(st.session_state.active_session_id, language="text")
-        else:
-            st.warning(
-                "No session_id yet. Upload PDFs in this chat to create one."
-            )
-
-        st.divider()
-        st.header("Documents in this chat")
-
-        if st.session_state.active_session_id:
-            docs = list_docs(st.session_state.active_session_id)
-            if docs:
-                for d in docs:
-                    st.write(f"- {d.get('doc_name')}")
-            else:
-                st.caption("No docs stored for this session yet.")
-        else:
-            st.caption("Upload PDFs to see documents list.")
-
-
 # -----------------------------
 # Render sidebar
 # -----------------------------
 _ensure_active_chat()
-_sidebar()
 
+chats = list_chats()
+
+selected_chat_id, action = render_chatgpt_sidebar(
+    chats=chats,
+    active_chat_id=st.session_state.active_chat_id,
+)
+
+if action == "new_chat":
+    _new_chat()
+    st.query_params["chat"] = st.session_state.active_chat_id
+    st.rerun()
+
+if action == "select_chat" and selected_chat_id:
+    _load_chat(selected_chat_id)
+    st.query_params["chat"] = selected_chat_id
+    st.rerun()
+
+if action == "delete_chat" and selected_chat_id:
+    delete_chat(selected_chat_id)
+    # if deleted active, reset
+    if selected_chat_id == st.session_state.active_chat_id:
+        st.session_state.active_chat_id = None
+        st.session_state.active_session_id = None
+    st.rerun()
+
+# keep URL in sync
+if st.session_state.active_chat_id:
+    st.query_params["chat"] = st.session_state.active_chat_id
 
 # -----------------------------
 # Tabs
@@ -335,6 +308,19 @@ with tab_chat:
                 "user",
                 question.strip(),
             )
+
+            # If this chat is still default title, update it based on the first user question
+            try:
+                chats = list_chats()
+                current = next((c for c in chats if c["chat_id"] == st.session_state.active_chat_id), None)
+                if current and (current.get("title") in (None, "", "New chat")):
+                    words = question.strip().split()
+                    new_title = " ".join(words[:7])
+                    if len(words) > 7:
+                        new_title += "…"
+                    update_chat_title(st.session_state.active_chat_id, new_title)
+            except Exception:
+                pass
 
             try:
                 data = ask(
