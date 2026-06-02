@@ -9,8 +9,8 @@ from frontend.services.eval_runner import run_retrieval_eval, write_report_md
 def render_evaluation_tab(
     *,
     default_session_id: str = "",
-    default_test_path: str = "evaluation/test_questions.json",
-    report_out_path: str = "evaluation/retrieval_report.md",
+    default_test_path: str = "frontend/evaluation/test_questions.json",
+    report_out_path: str = "frontend/evaluation/retrieval_report.md",
 ) -> None:
 
     st.subheader("Evaluation (Retrieval Accuracy)")
