@@ -166,15 +166,17 @@ if action == "select_chat" and selected_chat_id:
 
 if action == "delete_chat" and selected_chat_id:
     delete_chat(selected_chat_id)
+    st.toast("Chat deleted", icon="🗑️")
 
-    # If we deleted the active chat, immediately create + switch to a new one
+    # If we deleted active chat, pick the next most recent chat; else keep active
     if selected_chat_id == st.session_state.active_chat_id:
-        st.toast("Chat deleted", icon="🗑️")
-        _new_chat()
-        st.rerun()
-    else:
-        st.toast("Chat deleted", icon="🗑️")
-        st.rerun()
+        remaining = list_chats()
+        if remaining:
+            _set_active_chat(remaining[0]["chat_id"])
+        else:
+            _new_chat()
+
+    st.rerun()
 
 # -----------------------------
 # Tabs
@@ -196,7 +198,7 @@ with tab_chat:
         "Upload one or more PDF files",
         type=["pdf"],
         accept_multiple_files=True,
-        key="uploader_chat",
+        key=f"uploader_chat_{st.session_state.active_chat_id}",   
     )
 
     col_u1, col_u2 = st.columns([1, 1])
@@ -322,7 +324,7 @@ with tab_chat:
 
     question = st.text_input(
         "Ask a question (uses this chat session)",
-        key="question_input",
+        key=f"question_input_{st.session_state.active_chat_id}",
     )
 
     if st.button("Send", type="primary"):
@@ -338,18 +340,14 @@ with tab_chat:
                 "user",
                 question.strip(),
             )
-
-            # If this chat is still default title, update it based on the first user question
+            
             try:
-                chats = list_chats()
-                st.sidebar.caption(f"DEBUG: chats found = {len(chats)}")
-                current = next((c for c in chats if c["chat_id"] == st.session_state.active_chat_id), None)
+                # If title still default, name chat after first uploaded PDF
+                chats_now = list_chats()
+                current = next((c for c in chats_now if c["chat_id"] == st.session_state.active_chat_id), None)
                 if current and (current.get("title") in (None, "", "New chat")):
-                    words = question.strip().split()
-                    new_title = " ".join(words[:7])
-                    if len(words) > 7:
-                        new_title += "…"
-                    update_chat_title(st.session_state.active_chat_id, new_title)
+                    first_pdf = uploaded_results[0].get("filename") if uploaded_results else "PDF chat"
+                    update_chat_title(st.session_state.active_chat_id, f"Docs: {first_pdf}")
             except Exception:
                 pass
 

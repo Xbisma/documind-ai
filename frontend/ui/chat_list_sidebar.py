@@ -40,82 +40,56 @@ def render_chatgpt_sidebar(
             ql = q.strip().lower()
             filtered = [c for c in chats if (c.get("title") or "").lower().find(ql) >= 0]
 
-        # scroll container via fixed-height block
-        st.markdown(
-            """
-            <style>
-              .chat-scroll {
-                height: 520px;
-                overflow-y: auto;
-                padding-right: 6px;
-              }
-              .chat-row {
-                border-radius: 10px;
-                padding: 10px 10px;
-                margin-bottom: 8px;
-                border: 1px solid rgba(0,0,0,0.08);
-                background: rgba(255,255,255,0.6);
-              }
-              .chat-row-active {
-                border: 1px solid rgba(255,0,0,0.45);
-                background: rgba(255,0,0,0.06);
-              }
-              .chat-title {
-                font-weight: 650;
-                font-size: 0.95rem;
-                margin-bottom: 2px;
-              }
-              .chat-meta {
-                color: rgba(0,0,0,0.55);
-                font-size: 0.75rem;
-              }
-            </style>
-            """,
-            unsafe_allow_html=True,
-        )
-
-        st.markdown('<div class="chat-scroll">', unsafe_allow_html=True)
+       
+        # chat list container with scroll
+        list_container = st.container(height=520)
 
         selected_chat_id = active_chat_id
         action = "none"
 
-        if not filtered:
-            st.caption("No chats yet.")
-        else:
-            for c in filtered:
-                chat_id = c["chat_id"]
-                title = c.get("title") or "Untitled chat"
-                created_at = (c.get("created_at") or "")[:19].replace("T", " ")
-                session_id = c.get("session_id") or ""
+        with list_container:
+            if not filtered:
+                st.caption("No chats yet.")
+            else:
+                for c in filtered:
+                    chat_id = c["chat_id"]
+                    title = c.get("title") or "Untitled chat"
+                    created_at = (c.get("created_at") or "")[:19].replace("T", " ")
+                    session_id = c.get("session_id") or ""
 
-                active = (chat_id == active_chat_id)
-                row_class = "chat-row chat-row-active" if active else "chat-row"
+                    active = (chat_id == active_chat_id)
 
-                st.markdown(f'<div class="{row_class}">', unsafe_allow_html=True)
+                    # Row style
+                    border = "2px solid rgba(255,0,0,0.35)" if active else "1px solid rgba(0,0,0,0.08)"
+                    bg = "rgba(255,0,0,0.06)" if active else "rgba(255,255,255,0.6)"
 
-                # main row click
-                if st.button(f"{title}", key=f"open_{chat_id}", use_container_width=True):
-                    selected_chat_id = chat_id
-                    action = "select_chat"
+                    st.markdown(
+                        f"""
+                        <div style="border:{border}; background:{bg}; border-radius:10px; padding:10px; margin-bottom:8px;">
+                        <div style="font-weight:650;">{title}</div>
+                        <div style="color:rgba(0,0,0,0.55); font-size:0.75rem;">{created_at}</div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
 
-                st.markdown(f'<div class="chat-meta">{created_at}</div>', unsafe_allow_html=True)
+                    colA, colB, colC = st.columns([6, 2, 2])
 
-                cols = st.columns([1, 1, 1])
-                with cols[0]:
-                    if st.button("Delete", key=f"del_{chat_id}", use_container_width=True):
-                        selected_chat_id = chat_id
-                        action = "delete_chat"
-                with cols[1]:
-                    if session_id:
-                        _copy_button("Session ID", session_id, key=f"copy_{chat_id}")
-                    else:
-                        st.button("Session ID", key=f"copy_disabled_{chat_id}", disabled=True, use_container_width=True)
-                with cols[2]:
-                    st.caption(f"{chat_id[:6]}…")
+                    with colA:
+                        if st.button("Open", key=f"open_{chat_id}", use_container_width=True):
+                            selected_chat_id = chat_id
+                            action = "select_chat"
 
-                st.markdown("</div>", unsafe_allow_html=True)
+                    with colB:
+                        if st.button("🗑️", key=f"del_{chat_id}", help="Delete chat", use_container_width=True):
+                            selected_chat_id = chat_id
+                            action = "delete_chat"
 
-        st.markdown("</div>", unsafe_allow_html=True)
+                    with colC:
+                        if session_id:
+                            _copy_button("ID", session_id, key=f"copy_{chat_id}")
+                        else:
+                            st.button("ID", key=f"copy_disabled_{chat_id}", disabled=True, use_container_width=True)
 
         if new_clicked:
             return selected_chat_id, "new_chat"
